@@ -17,6 +17,7 @@ struct z_erofs_inmem_extent {
 	unsigned int compressedblks;
 	unsigned int length;
 	bool raw, partial;
+	struct list_head list;
 };
 
 struct z_erofs_dedupe_ctx {
