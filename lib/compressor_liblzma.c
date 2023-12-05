@@ -84,7 +84,8 @@ static int erofs_compressor_liblzma_setlevel(struct erofs_compress *c,
 	return 0;
 }
 
-static int erofs_compressor_liblzma_init(struct erofs_compress *c)
+static int erofs_compressor_liblzma_init(struct erofs_compress *c,
+					 bool print_warning)
 {
 	struct erofs_liblzma_context *ctx;
 
@@ -93,8 +94,9 @@ static int erofs_compressor_liblzma_init(struct erofs_compress *c)
 		return -ENOMEM;
 	ctx->strm = (lzma_stream)LZMA_STREAM_INIT;
 	c->private_data = ctx;
-	erofs_warn("EXPERIMENTAL MicroLZMA feature in use. Use at your own risk!");
-	erofs_warn("Note that it may take more time since the compressor is still single-threaded for now.");
+	if (print_warning) {
+		erofs_warn("EXPERIMENTAL MicroLZMA feature in use. Use at your own risk!");
+	}
 	return 0;
 }
 
