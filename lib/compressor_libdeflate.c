@@ -80,11 +80,13 @@ static int compressor_libdeflate_exit(struct erofs_compress *c)
 	return 0;
 }
 
-static int compressor_libdeflate_init(struct erofs_compress *c)
+static int compressor_libdeflate_init(struct erofs_compress *c, bool print_warning)
 {
 	c->private_data = NULL;
 
-	erofs_warn("EXPERIMENTAL libdeflate compressor in use. Use at your own risk!");
+	if (print_warning) {
+		erofs_warn("EXPERIMENTAL libdeflate compressor in use. Use at your own risk!");
+	}
 	return 0;
 }
 

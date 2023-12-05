@@ -15,7 +15,7 @@ struct erofs_compressor {
 	int default_level;
 	int best_level;
 
-	int (*init)(struct erofs_compress *c);
+	int (*init)(struct erofs_compress *c, bool print_warning);
 	int (*exit)(struct erofs_compress *c);
 	int (*setlevel)(struct erofs_compress *c, int compression_level);
 
@@ -56,8 +56,8 @@ int erofs_compress_destsize(const struct erofs_compress *c,
 			    void *dst, unsigned int dstsize);
 
 int erofs_compressor_setlevel(struct erofs_compress *c, int compression_level);
-int erofs_compressor_init(struct erofs_sb_info *sbi,
-		struct erofs_compress *c, char *alg_name);
+int erofs_compressor_init(struct erofs_sb_info *sbi, struct erofs_compress *c,
+			  const char *alg_name, bool print_warning);
 int erofs_compressor_exit(struct erofs_compress *c);
 
 #endif
