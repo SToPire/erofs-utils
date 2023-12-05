@@ -18,6 +18,12 @@ static void *workqueue_thread(void *arg)
 {
 	struct erofs_workqueue		*wq = arg;
 	struct erofs_work		*wi;
+	void				*private = NULL;
+
+	if (wq->private_size) {
+		private = calloc(1, wq->private_size);
+		assert(private);
+	}
 
 	/*
 	 * Loop pulling work from the passed in work queue.
@@ -56,13 +62,22 @@ static void *workqueue_thread(void *arg)
 		}
 		pthread_mutex_unlock(&wq->lock);
 
+		wi->private = private;
 		(wi->function)(wq, wi);
 	}
+
+	if (private) {
+		assert(wq->private_fini);
+		(wq->private_fini)(private);
+		free(private);
+	}
+
 	return NULL;
 }
 
 /* Allocate a work queue and threads.  Returns zero or negative error code. */
-int erofs_workqueue_create(struct erofs_workqueue *wq,
+int erofs_workqueue_create(struct erofs_workqueue *wq, size_t private_size,
+			   erofs_wq_priv_fini_t *priv_fini,
 			   unsigned int nr_workers, unsigned int max_queue)
 {
 	unsigned int		i;
@@ -79,6 +94,8 @@ int erofs_workqueue_create(struct erofs_workqueue *wq,
 	if (err)
 		goto out_cond;
 
+	wq->private_size = private_size;
+	wq->private_fini = priv_fini;
 	wq->thread_count = nr_workers;
 	wq->max_queued = max_queue;
 	wq->threads = malloc(nr_workers * sizeof(pthread_t));

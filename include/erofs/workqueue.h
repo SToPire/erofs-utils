@@ -13,11 +13,13 @@ struct erofs_work;
 
 typedef void erofs_workqueue_func_t(struct erofs_workqueue *wq,
 				    struct erofs_work *work);
+typedef void erofs_wq_priv_fini_t(void *);
 
 struct erofs_work {
 	struct erofs_workqueue	*queue;
 	struct erofs_work	*next;
 	erofs_workqueue_func_t	*function;
+	void 			*private;
 };
 
 struct erofs_workqueue {
@@ -32,12 +34,14 @@ struct erofs_workqueue {
 	bool			terminated;
 	int			max_queued;
 	pthread_cond_t		queue_full;
+	size_t			private_size;
+	erofs_wq_priv_fini_t	*private_fini;
 };
 
-int erofs_workqueue_create(struct erofs_workqueue *wq,
+int erofs_workqueue_create(struct erofs_workqueue *wq, size_t private_size,
+			   erofs_wq_priv_fini_t *private_fini,
 			   unsigned int nr_workers, unsigned int max_queue);
-int erofs_workqueue_add(struct erofs_workqueue	*wq,
-			struct erofs_work *wi);
+int erofs_workqueue_add(struct erofs_workqueue *wq, struct erofs_work *wi);
 int erofs_workqueue_terminate(struct erofs_workqueue *wq);
 void erofs_workqueue_destroy(struct erofs_workqueue *wq);
 
