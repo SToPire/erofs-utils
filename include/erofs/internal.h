@@ -25,6 +25,9 @@ typedef unsigned short umode_t;
 #ifdef HAVE_PTHREAD_H
 #include <pthread.h>
 #endif
+#ifdef EROFS_MT_ENABLED
+#include <stdatomic.h>
+#endif
 
 #ifndef PATH_MAX
 #define PATH_MAX        4096    /* # chars in a path name including nul */
@@ -169,7 +172,11 @@ struct erofs_inode {
 		/* (mkfs.erofs) next pointer for directory dumping */
 		struct erofs_inode *next_dirwrite;
 	};
+#ifdef EROFS_MT_ENABLED
+	atomic_uint i_count;
+#else
 	unsigned int i_count;
+#endif
 	struct erofs_sb_info *sbi;
 	struct erofs_inode *i_parent;
 
@@ -249,6 +256,9 @@ struct erofs_inode {
 	};
 #ifdef WITH_ANDROID
 	uint64_t capabilities;
+#endif
+#ifdef EROFS_MT_ENABLED
+	struct erofs_compress_file* cfile;
 #endif
 };
 
