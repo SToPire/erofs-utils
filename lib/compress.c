@@ -47,6 +47,9 @@ struct z_erofs_vle_compress_ctx {
 	erofs_blk_t compressed_blocks;
 	u16 clusterofs;
 
+	struct list_head dedupe_hashmap[65536];
+	bool dedupe_hashmap_init;
+
 	u32 tof_chksum;
 	bool fix_dedupedfrag;
 	bool fragemitted;
@@ -294,7 +297,7 @@ static int z_erofs_compress_dedupe(struct z_erofs_vle_compress_ctx *ctx,
 		};
 		int delta;
 
-		if (z_erofs_dedupe_match(&dctx))
+		if (z_erofs_dedupe_match(ctx->dedupe_hashmap, &dctx))
 			break;
 
 		delta = ctx->queue + ctx->head - dctx.cur;
@@ -330,8 +333,6 @@ static int z_erofs_compress_dedupe(struct z_erofs_vle_compress_ctx *ctx,
 		inode->datalayout = EROFS_INODE_COMPRESSED_FULL;
 		erofs_sb_set_dedupe(sbi);
 
-		sbi->saved_by_deduplication +=
-			dctx.e.compressedblks * erofs_blksiz(sbi);
 		erofs_dbg("Dedupe %u %scompressed data (delta %d) to %u of %u blocks",
 			  dctx.e.length, dctx.e.raw ? "un" : "",
 			  delta, dctx.e.blkaddr, dctx.e.compressedblks);
@@ -695,7 +696,8 @@ frag_packing:
 		e->partial = false;
 		e->blkaddr = ctx->blkaddr;
 		if (!may_inline && !may_packing && !is_packed_inode)
-			(void)z_erofs_dedupe_insert(e, ctx->queue + ctx->head);
+			(void)z_erofs_dedupe_insert(ctx->dedupe_hashmap, e,
+						    ctx->queue + ctx->head);
 		ctx->blkaddr += e->compressedblks;
 		ctx->head += e->length;
 		len -= e->length;
@@ -1043,8 +1045,6 @@ int vle_compress_all(struct z_erofs_vle_compress_ctx *ctx, u64 offset,
 int z_erofs_handle_fragments(struct erofs_inode *inode, bool fragemitted,
 			     erofs_blk_t blkaddr, struct list_head *elist)
 {
-	struct erofs_sb_info *sbi = inode->sbi;
-
 	/* generate an extent for the deduplicated fragment */
 	if (inode->fragment_size && !fragemitted) {
 		struct z_erofs_inmem_extent *e = malloc(sizeof(*e));
@@ -1056,8 +1056,6 @@ int z_erofs_handle_fragments(struct erofs_inode *inode, bool fragemitted,
 		e->partial = false;
 		e->blkaddr = blkaddr;
 		list_add_tail(&e->list, elist);
-
-		sbi->saved_by_deduplication += inode->fragment_size;
 	}
 	z_erofs_fragments_commit(inode);
 
@@ -1079,6 +1077,14 @@ void z_erofs_init_ctx(struct z_erofs_vle_compress_ctx *ctx,
 	ctx->fd = fd;
 	ctx->tmpfile = NULL;
 	init_list_head(&ctx->elist);
+
+	if (ctx->dedupe_hashmap_init)
+		z_erofs_dedupe_exit(ctx->dedupe_hashmap);
+
+	for (int i = 0; i < 65536; i++)
+		init_list_head(&ctx->dedupe_hashmap[i]);
+
+	ctx->dedupe_hashmap_init = true;
 }
 
 int z_erofs_finish_compress(struct z_erofs_write_index_ctx *ictx,
@@ -1768,6 +1774,8 @@ int z_erofs_compress_exit(void)
 		erofs_workqueue_destroy(&wq);
 		while (work_idle) {
 			struct erofs_compress_work *tmp = work_idle->next;
+			if (work_idle->ctx.dedupe_hashmap_init)
+				z_erofs_dedupe_exit(work_idle->ctx.dedupe_hashmap);
 			free(work_idle);
 			work_idle = tmp;
 		}

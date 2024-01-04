@@ -26,12 +26,12 @@ struct z_erofs_dedupe_ctx {
 	struct z_erofs_inmem_extent	e;
 };
 
-int z_erofs_dedupe_match(struct z_erofs_dedupe_ctx *ctx);
-int z_erofs_dedupe_insert(struct z_erofs_inmem_extent *e,
-			  void *original_data);
+int z_erofs_dedupe_match(struct list_head *hashmap, struct z_erofs_dedupe_ctx *ctx);
+int z_erofs_dedupe_insert(struct list_head *hashmap,
+			  struct z_erofs_inmem_extent *e, void *original_data);
 void z_erofs_dedupe_commit(bool drop);
 int z_erofs_dedupe_init(unsigned int wsiz);
-void z_erofs_dedupe_exit(void);
+void z_erofs_dedupe_exit(struct list_head *hashmap);
 
 #ifdef __cplusplus
 }

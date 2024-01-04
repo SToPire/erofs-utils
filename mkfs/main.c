@@ -752,11 +752,7 @@ static int mkfs_parse_options_cfg(int argc, char *argv[])
 	}
 
 #ifdef EROFS_MT_ENABLED
-	if (cfg.c_mt_worker_num > 1 && (cfg.c_dedupe || cfg.c_fragments)) {
-		cfg.c_mt_worker_num = 1;
-		erofs_warn(
-			"Please note that dedupe/fragments is NOT supported in multi-threaded mode now, using worker=1.");
-	}
+
 #endif
 
 	return 0;
@@ -999,11 +995,9 @@ static void erofs_mkfs_showsummaries(erofs_blk_t nblocks)
 	fprintf(stdout, "------\nFilesystem UUID: %s\n"
 		"Filesystem total blocks: %u (of %u-byte blocks)\n"
 		"Filesystem total inodes: %llu\n"
-		"Filesystem total metadata blocks: %u\n"
-		"Filesystem total deduplicated bytes (of source files): %llu\n",
+		"Filesystem total metadata blocks: %u\n",
 		uuid_str, nblocks, 1U << sbi.blkszbits, sbi.inos | 0ULL,
-		erofs_total_metablocks(),
-		sbi.saved_by_deduplication | 0ULL);
+		erofs_total_metablocks());
 }
 
 int main(int argc, char **argv)
@@ -1276,7 +1270,6 @@ int main(int argc, char **argv)
 		err = erofs_mkfs_superblock_csum_set();
 exit:
 	z_erofs_compress_exit();
-	z_erofs_dedupe_exit();
 	erofs_blocklist_close();
 	dev_close(&sbi);
 	erofs_cleanup_compress_hints();

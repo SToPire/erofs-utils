@@ -62,8 +62,6 @@ out_bytes:
 }
 
 static unsigned int window_size, rollinghash_rm;
-static struct list_head dedupe_tree[65536];
-struct z_erofs_dedupe_item *dedupe_subtree;
 
 struct z_erofs_dedupe_item {
 	struct list_head list;
@@ -80,7 +78,8 @@ struct z_erofs_dedupe_item {
 	u8		extra_data[];
 };
 
-int z_erofs_dedupe_match(struct z_erofs_dedupe_ctx *ctx)
+int z_erofs_dedupe_match(struct list_head *hashmap,
+			 struct z_erofs_dedupe_ctx *ctx)
 {
 	struct z_erofs_dedupe_item e_find;
 	u8 *cur;
@@ -112,7 +111,7 @@ int z_erofs_dedupe_match(struct z_erofs_dedupe_ctx *ctx)
 				rollinghash_rm, cur[window_size], cur[0]);
 		}
 
-		p = &dedupe_tree[e_find.hash & (ARRAY_SIZE(dedupe_tree) - 1)];
+		p = &hashmap[e_find.hash & 65535];
 		list_for_each_entry(e, p, list) {
 			if (e->hash != e_find.hash)
 				continue;
@@ -148,8 +147,8 @@ int z_erofs_dedupe_match(struct z_erofs_dedupe_ctx *ctx)
 	return -ENOENT;
 }
 
-int z_erofs_dedupe_insert(struct z_erofs_inmem_extent *e,
-			  void *original_data)
+int z_erofs_dedupe_insert(struct list_head *hashmap,
+			  struct z_erofs_inmem_extent *e, void *original_data)
 {
 	struct list_head *p;
 	struct z_erofs_dedupe_item *di, *k;
@@ -175,49 +174,29 @@ int z_erofs_dedupe_insert(struct z_erofs_inmem_extent *e,
 	di->raw = e->raw;
 
 	/* skip the same xxh64 hash */
-	p = &dedupe_tree[di->hash & (ARRAY_SIZE(dedupe_tree) - 1)];
+	p = &hashmap[di->hash & 65535];
 	list_for_each_entry(k, p, list) {
 		if (k->prefix_xxh64 == di->prefix_xxh64) {
 			free(di);
 			return 0;
 		}
 	}
-	di->chain = dedupe_subtree;
-	dedupe_subtree = di;
 	list_add_tail(&di->list, p);
 	return 0;
 }
 
 void z_erofs_dedupe_commit(bool drop)
 {
-	if (!dedupe_subtree)
-		return;
-	if (drop) {
-		struct z_erofs_dedupe_item *di, *n;
-
-		for (di = dedupe_subtree; di; di = n) {
-			n = di->chain;
-			list_del(&di->list);
-			free(di);
-		}
-	}
-	dedupe_subtree = NULL;
 }
 
 int z_erofs_dedupe_init(unsigned int wsiz)
 {
-	struct list_head *p;
-
-	for (p = dedupe_tree;
-		p < dedupe_tree + ARRAY_SIZE(dedupe_tree); ++p)
-		init_list_head(p);
-
 	window_size = wsiz;
 	rollinghash_rm = erofs_rollinghash_calc_rm(window_size);
 	return 0;
 }
 
-void z_erofs_dedupe_exit(void)
+void z_erofs_dedupe_exit(struct list_head *hashmap)
 {
 	struct z_erofs_dedupe_item *di, *n;
 	struct list_head *p;
@@ -227,12 +206,10 @@ void z_erofs_dedupe_exit(void)
 
 	z_erofs_dedupe_commit(true);
 
-	for (p = dedupe_tree;
-		p < dedupe_tree + ARRAY_SIZE(dedupe_tree); ++p) {
+	for (p = hashmap; p < hashmap + 65536; ++p) {
 		list_for_each_entry_safe(di, n, p, list) {
 			list_del(&di->list);
 			free(di);
 		}
 	}
-	dedupe_subtree = NULL;
 }
