@@ -752,10 +752,10 @@ static int mkfs_parse_options_cfg(int argc, char *argv[])
 	}
 
 #ifdef EROFS_MT_ENABLED
-	if (cfg.c_mt_worker_num > 1 && (cfg.c_dedupe || cfg.c_fragments)) {
+	if (cfg.c_mt_worker_num > 1 && (cfg.c_fragments)) {
 		cfg.c_mt_worker_num = 1;
 		erofs_warn(
-			"Please note that dedupe/fragments is NOT supported in multi-threaded mode now, using worker=1.");
+			"Please note that fragments is NOT supported in multi-threaded mode now, using worker=1.");
 	}
 #endif
 

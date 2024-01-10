@@ -12,12 +12,21 @@
 #include <errno.h>
 #include <assert.h>
 #include "erofs/workqueue.h"
+#include "erofs/print.h"
+
+struct erofs_workqueue_thread_arg {
+	struct erofs_workqueue *wq;
+	unsigned int thread_index;
+};
 
 /* Main processing thread */
 static void *workqueue_thread(void *arg)
 {
-	struct erofs_workqueue		*wq = arg;
-	struct erofs_work		*wi;
+	struct erofs_workqueue_thread_arg *argp = arg;
+	struct erofs_workqueue *wq = argp->wq;
+	unsigned int thread_index = argp->thread_index;
+	struct erofs_workqueue_queue *queue = &wq->queues[thread_index];
+	struct erofs_work *wi;
 	void				*private = NULL;
 
 	if (wq->private_size) {
@@ -35,11 +44,11 @@ static void *workqueue_thread(void *arg)
 		/*
 		 * Wait for work.
 		 */
-		while (wq->next_item == NULL && !wq->terminate) {
-			assert(wq->item_count == 0);
+		while (queue->next_item == NULL && !wq->terminate) {
+			assert(queue->item_count == 0);
 			pthread_cond_wait(&wq->wakeup, &wq->lock);
 		}
-		if (wq->next_item == NULL && wq->terminate) {
+		if (queue->next_item == NULL && wq->terminate) {
 			pthread_mutex_unlock(&wq->lock);
 			break;
 		}
@@ -48,22 +57,22 @@ static void *workqueue_thread(void *arg)
 		 *  Dequeue work from the head of the list. If the queue was
 		 *  full then send a wakeup if we're configured to do so.
 		 */
-		assert(wq->item_count > 0);
+		assert(queue->item_count > 0);
 		if (wq->max_queued)
 			pthread_cond_broadcast(&wq->queue_full);
 
-		wi = wq->next_item;
-		wq->next_item = wi->next;
-		wq->item_count--;
+		wi = queue->next_item;
+		queue->next_item = wi->next;
+		queue->item_count--;
 
-		if (wq->max_queued && wq->next_item) {
+		if (wq->max_queued && queue->next_item) {
 			/* more work, wake up another worker */
 			pthread_cond_signal(&wq->wakeup);
 		}
 		pthread_mutex_unlock(&wq->lock);
 
 		wi->private = private;
-		(wi->function)(wq, wi);
+		(wi->function)(wq, wi, thread_index);
 	}
 
 	if (private) {
@@ -72,6 +81,7 @@ static void *workqueue_thread(void *arg)
 		free(private);
 	}
 
+	free(arg);
 	return NULL;
 }
 
@@ -103,12 +113,27 @@ int erofs_workqueue_create(struct erofs_workqueue *wq, size_t private_size,
 		err = -errno;
 		goto out_mutex;
 	}
+	wq->queues = calloc(1, nr_workers * sizeof(struct erofs_workqueue));
+	if (!wq->queues) {
+		err = -errno;
+		goto out_mutex;
+	}
 	wq->terminate = false;
 	wq->terminated = false;
 
 	for (i = 0; i < nr_workers; i++) {
+		struct erofs_workqueue_thread_arg *arg;
+
+		arg = malloc(sizeof(*arg));
+		if (!arg) {
+			err = -errno;
+			break;
+		}
+		arg->wq = wq;
+		arg->thread_index = i;
+
 		err = -pthread_create(&wq->threads[i], NULL, workqueue_thread,
-				wq);
+				      arg);
 		if (err)
 			break;
 	}
@@ -139,11 +164,13 @@ int erofs_workqueue_add(struct erofs_workqueue	*wq,
 			struct erofs_work *wi)
 {
 	int	ret;
+	unsigned int thread_index;
+	struct erofs_workqueue_queue *queue;
 
 	assert(!wq->terminated);
 
 	if (wq->thread_count == 0) {
-		(wi->function)(wq, wi);
+		(wi->function)(wq, wi, 0);
 		return 0;
 	}
 
@@ -152,18 +179,20 @@ int erofs_workqueue_add(struct erofs_workqueue	*wq,
 
 	/* Now queue the new work structure to the work queue. */
 	pthread_mutex_lock(&wq->lock);
+	thread_index = wq->next_thread;
+	queue = &wq->queues[thread_index];
 restart:
-	if (wq->next_item == NULL) {
-		assert(wq->item_count == 0);
-		ret = -pthread_cond_signal(&wq->wakeup);
+	if (queue->next_item == NULL) {
+		assert(queue->item_count == 0);
+		ret = -pthread_cond_broadcast(&wq->wakeup);
 		if (ret) {
 			pthread_mutex_unlock(&wq->lock);
 			return ret;
 		}
-		wq->next_item = wi;
+		queue->next_item = wi;
 	} else {
 		/* throttle on a full queue if configured */
-		if (wq->max_queued && wq->item_count == wq->max_queued) {
+		if (wq->max_queued && queue->item_count == wq->max_queued) {
 			pthread_cond_wait(&wq->queue_full, &wq->lock);
 			/*
 			 * Queue might be empty or even still full by the time
@@ -172,10 +201,12 @@ restart:
 			 */
 			goto restart;
 		}
-		wq->last_item->next = wi;
+		queue->last_item->next = wi;
 	}
-	wq->last_item = wi;
-	wq->item_count++;
+	queue->last_item = wi;
+	queue->item_count++;
+
+	wq->next_thread = (wq->next_thread + 1) % wq->thread_count;
 	pthread_mutex_unlock(&wq->lock);
 	return 0;
 }
@@ -215,6 +246,7 @@ void erofs_workqueue_destroy(struct erofs_workqueue *wq)
 	assert(wq->terminated);
 
 	free(wq->threads);
+	free(wq->queues);
 	pthread_mutex_destroy(&wq->lock);
 	pthread_cond_destroy(&wq->wakeup);
 	pthread_cond_destroy(&wq->queue_full);

@@ -7,6 +7,7 @@
 #ifndef __EROFS_COMPRESS_H
 #define __EROFS_COMPRESS_H
 
+#include "erofs/dedupe.h"
 #ifdef __cplusplus
 extern "C"
 {
@@ -27,6 +28,8 @@ struct erofs_compress_file {
 	struct z_erofs_write_index_ctx *ictx;
 	struct erofs_compress_work *head;
 	int fd;
+
+	struct z_erofs_dedupe_item **dedupe_lists;
 
 	struct erofs_compress_file *next;
 };

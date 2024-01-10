@@ -12,7 +12,8 @@ struct erofs_workqueue;
 struct erofs_work;
 
 typedef void erofs_workqueue_func_t(struct erofs_workqueue *wq,
-				    struct erofs_work *work);
+				    struct erofs_work *work,
+					unsigned int thread_idx);
 typedef void erofs_wq_priv_fini_t(void *);
 
 struct erofs_work {
@@ -22,14 +23,19 @@ struct erofs_work {
 	void 			*private;
 };
 
+struct erofs_workqueue_queue {
+	struct erofs_work *next_item;
+	struct erofs_work *last_item;
+	unsigned int item_count;
+};
+
 struct erofs_workqueue {
 	pthread_t		*threads;
-	struct erofs_work	*next_item;
-	struct erofs_work	*last_item;
+	struct erofs_workqueue_queue *queues;
 	pthread_mutex_t		lock;
 	pthread_cond_t		wakeup;
-	unsigned int		item_count;
 	unsigned int		thread_count;
+	unsigned int		next_thread;
 	bool			terminate;
 	bool			terminated;
 	int			max_queued;
