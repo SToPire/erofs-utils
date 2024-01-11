@@ -345,6 +345,8 @@ static int z_erofs_compress_dedupe(struct z_erofs_vle_compress_ctx *ctx,
 		}
 		memcpy(newe, &dctx.e, sizeof(*newe));
 		list_add_tail(&newe->list, &ctx->elist);
+	    e = newe;
+		elen = e->length;
 
 		ctx->head += dctx.e.length - delta;
 		DBG_BUGON(*len < dctx.e.length - delta);
@@ -692,6 +694,7 @@ frag_packing:
 			e->raw = false;
 			may_inline = false;
 			may_packing = false;
+			ret = 0;
 		}
 		e->partial = false;
 		e->blkaddr = ctx->blkaddr;
