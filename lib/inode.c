@@ -5,6 +5,7 @@
  * Created by Li Guifu <bluce.liguifu@huawei.com>
  * with heavy changes by Gao Xiang <gaoxiang25@huawei.com>
  */
+#include "erofs/dedupe.h"
 #define _GNU_SOURCE
 #include <string.h>
 #include <stdlib.h>
@@ -31,7 +32,7 @@
 #include "erofs/queue.h"
 #endif
 #include "liberofs_private.h"
-
+#include <stdatomic.h>
 extern bool mt_enabled;
 
 #define S_SHIFT                 12
@@ -1393,15 +1394,30 @@ void *erofs_mkfs_mt_traverse_task(void *path)
 	pthread_exit((void *)__erofs_mkfs_build_tree_from_path(path, true));
 }
 
+extern atomic_int workerwaiting;
+extern pthread_mutex_t epoch_mutex;
+extern pthread_cond_t epoch_cond;
+pthread_cond_t *curcond;
+
 static int erofs_mkfs_reap_compressed_file(struct erofs_inode *inode)
 {
 	struct erofs_compress_file *cfile = inode->cfile;
 	int fd = cfile->fd;
 	int ret = 0;
 
+	pthread_mutex_lock(&epoch_mutex);
+	curcond = &cfile->cond;
+	pthread_mutex_unlock(&epoch_mutex);
+
 	pthread_mutex_lock(&cfile->mutex);
-	while (cfile->nfini != cfile->total)
+	while (cfile->nfini != cfile->total) {
+		if (workerwaiting) {
+			z_erofs_dedupe_merge();
+			workerwaiting = 0;
+			pthread_cond_broadcast(&epoch_cond);
+		}
 		pthread_cond_wait(&cfile->cond, &cfile->mutex);
+	}
 	pthread_mutex_unlock(&cfile->mutex);
 
 	ret = z_erofs_mt_reap(cfile);

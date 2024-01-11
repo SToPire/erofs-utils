@@ -10,6 +10,12 @@
 #include "xxhash.h"
 #include "sha256.h"
 
+struct z_erofs_dedupe_hash_merge_item {
+	struct z_erofs_dedupe_item **local_lists;
+	size_t size;
+} dedupe_merge_list[4096];
+size_t dedupe_merge_list_index;
+
 unsigned long erofs_memcmp2(const u8 *s1, const u8 *s2,
 			    unsigned long sz)
 {
@@ -161,7 +167,7 @@ int z_erofs_dedupe_match(struct list_head *local_hashmap,
 }
 
 int z_erofs_dedupe_insert(struct list_head *local_hashmap, int hashmap_size,
-			  struct z_erofs_dedupe_item *local_list,
+			  struct z_erofs_dedupe_item **local_list,
 			  struct z_erofs_inmem_extent *e, void *original_data)
 {
 	struct list_head *p;
@@ -194,8 +200,8 @@ int z_erofs_dedupe_insert(struct list_head *local_hashmap, int hashmap_size,
 			return 0;
 		}
 	}
-	di->chain = local_list;
-	local_list = di;
+	di->chain = *local_list;
+	*local_list = di;
 	list_add_tail(&di->list, p);
 	return 0;
 }
@@ -208,7 +214,10 @@ void z_erofs_dedupe_commit(struct z_erofs_dedupe_item **local_lists,
 	if (!local_lists)
 		return;
 	if (!drop) {
-		// TODO: commit to global dedupe list
+		dedupe_merge_list[dedupe_merge_list_index].local_lists = local_lists;
+		dedupe_merge_list[dedupe_merge_list_index].size = size;
+		++dedupe_merge_list_index;
+		return;
 	}
 	for (size_t i = 0; i < size; ++i) {
 		local_list = local_lists[i];
@@ -222,6 +231,38 @@ void z_erofs_dedupe_commit(struct z_erofs_dedupe_item **local_lists,
 	}
 
 	free(local_lists);
+}
+
+void z_erofs_dedupe_merge(void)
+{
+	struct z_erofs_dedupe_item *di, *k, *tmp;
+
+	for (size_t i = 0; i < dedupe_merge_list_index; ++i) {
+		for (size_t j = 0; j < dedupe_merge_list[i].size; ++j) {
+			di = dedupe_merge_list[i].local_lists[j];
+			while (di) {
+				struct list_head *p;
+
+				tmp = di->chain;
+				p = &dedupe_global[di->hash &
+						   (EROFS_DEDUPE_GLOBAL_BUCKET_NUM - 1)];
+				list_for_each_entry(k, p, list) {
+					if (k->prefix_xxh64 == di->prefix_xxh64) {
+						free(di);
+						break;
+					}
+				}
+				if (&k->list == p) {
+					list_add_tail(&di->list, p);
+					di->chain = NULL;
+				}
+				di = tmp;
+			}
+		}
+		free(dedupe_merge_list[i].local_lists);		
+	}
+
+	dedupe_merge_list_index = 0;
 }
 
 int z_erofs_dedupe_init(unsigned int wsiz)
@@ -311,8 +352,13 @@ erofs_blk_t z_erofs_dedupe_blkmap_get(erofs_blk_t vblkaddr)
 			cur = cur->left;
 		else if (vblkaddr >= cur->vaddr + cur->len)
 			cur = cur->right;
-		else
-			return cur->paddr + (vblkaddr - cur->vaddr);
+		// else
+		// 	return cur->paddr + (vblkaddr - cur->vaddr);
+		else {
+			erofs_blk_t pblkaddr = cur->paddr + (vblkaddr - cur->vaddr);
+			// erofs_err("dedupe blkmap hit: vblkaddr=%lx pblkaddr=%lx", vblkaddr, pblkaddr);
+			return pblkaddr;
+		}
 	}
 
 	return 0;

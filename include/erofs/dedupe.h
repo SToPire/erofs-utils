@@ -47,7 +47,7 @@ struct z_erofs_dedupe_item {
 int z_erofs_dedupe_match(struct list_head *local_hashmap,
 			 struct z_erofs_dedupe_ctx *ctx);
 int z_erofs_dedupe_insert(struct list_head *local_hashmap, int hashmap_size,
-			  struct z_erofs_dedupe_item *local_list,
+			  struct z_erofs_dedupe_item **local_list,
 			  struct z_erofs_inmem_extent *e, void *original_data);
 void z_erofs_dedupe_commit(struct z_erofs_dedupe_item **local_lists,
 			   size_t size, bool drop);
@@ -58,7 +58,7 @@ void z_erofs_dedupe_blkmap_add(erofs_blk_t vblkaddr, erofs_blk_t pblkaddr,
 			       erofs_blk_t blks);
 erofs_blk_t z_erofs_dedupe_blkmap_get(erofs_blk_t vblkaddr);
 void z_erofs_dedupe_blkmap_free(void);
-
+void z_erofs_dedupe_merge(void);
 #ifdef __cplusplus
 }
 #endif

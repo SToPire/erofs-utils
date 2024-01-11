@@ -7,6 +7,7 @@
  */
 #ifndef _LARGEFILE64_SOURCE
 #define _LARGEFILE64_SOURCE
+#include "erofs/defs.h"
 #endif
 #include <string.h>
 #include <stdlib.h>
@@ -359,6 +360,7 @@ static int z_erofs_compress_dedupe(struct z_erofs_vle_compress_ctx *ctx,
 		memcpy(newe, &dctx.e, sizeof(*newe));
 		list_add_tail(&newe->list, &ctx->elist);
 	    e = newe;
+		elen = e->length;
 
 		ctx->head += dctx.e.length - delta;
 		DBG_BUGON(*len < dctx.e.length - delta);
@@ -706,6 +708,7 @@ frag_packing:
 			e->raw = false;
 			may_inline = false;
 			may_packing = false;
+			ret = 0;
 		}
 		e->partial = false;
 		e->dedupe = false;
@@ -713,7 +716,7 @@ frag_packing:
 		if (!may_inline && !may_packing && !is_packed_inode)
 			(void)z_erofs_dedupe_insert(
 				ctx->local_hashmap,
-				EROFS_DEDUPE_LOCAL_BUCKET_NUM, ctx->local_list,
+				EROFS_DEDUPE_LOCAL_BUCKET_NUM, &ctx->local_list,
 				e, ctx->queue + ctx->head);
 		ctx->blkaddr += e->compressedblks;
 		ctx->head += e->length;
@@ -1778,7 +1781,7 @@ int z_erofs_compress_init(struct erofs_sb_info *sbi, struct erofs_buffer_head *s
 		ret = erofs_workqueue_create(
 			&wq, sizeof(struct erofs_compress_wq_private),
 			z_erofs_mt_private_fini, cfg.c_mt_worker_num,
-			cfg.c_mt_worker_num << 2);
+			128);
 		mt_enabled = !ret;
 	}
 #else

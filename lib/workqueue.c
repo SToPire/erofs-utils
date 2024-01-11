@@ -13,11 +13,20 @@
 #include <assert.h>
 #include "erofs/workqueue.h"
 #include "erofs/print.h"
+#include "erofs/queue.h"
+#include <stdatomic.h>
 
 struct erofs_workqueue_thread_arg {
 	struct erofs_workqueue *wq;
 	unsigned int thread_index;
 };
+
+#define N_EPOCH (20)
+int epoch_ready = 0;
+atomic_int workerwaiting;
+pthread_mutex_t epoch_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t epoch_cond = PTHREAD_COND_INITIALIZER;
+extern pthread_cond_t *curcond;
 
 /* Main processing thread */
 static void *workqueue_thread(void *arg)
@@ -28,6 +37,7 @@ static void *workqueue_thread(void *arg)
 	struct erofs_workqueue_queue *queue = &wq->queues[thread_index];
 	struct erofs_work *wi;
 	void				*private = NULL;
+	int count = 0;
 
 	if (wq->private_size) {
 		private = calloc(1, wq->private_size);
@@ -73,6 +83,21 @@ static void *workqueue_thread(void *arg)
 
 		wi->private = private;
 		(wi->function)(wq, wi, thread_index);
+
+		count++;
+		if (count == N_EPOCH) {
+			pthread_mutex_lock(&epoch_mutex);
+			count = 0; 
+			epoch_ready++;
+			if (epoch_ready == wq->thread_count) {
+				epoch_ready = 0;
+				workerwaiting = 1;
+				if (curcond)
+					pthread_cond_signal(curcond);
+			}
+			pthread_cond_wait(&epoch_cond, &epoch_mutex);
+			pthread_mutex_unlock(&epoch_mutex);
+		}
 	}
 
 	if (private) {
