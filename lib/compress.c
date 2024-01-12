@@ -1398,11 +1398,16 @@ struct erofs_compress_file *z_erofs_mt_do_compress(
 		last = &work->next;
 
 		z_erofs_init_ctx(&work->ctx, inode, blkaddr, tof_chksum, fd);
-		work->ctx.remaining =
-			(i == nsegs - 1) ?
-				round_up(inode->i_size - inode->fragment_size,
-					 cfg.c_mt_segment_size) :
-				cfg.c_mt_segment_size;
+		if (i == nsegs - 1) {
+			if (inode->i_size - inode->fragment_size == cfg.c_mt_segment_size)
+				work->ctx.remaining = cfg.c_mt_segment_size;
+			else
+				work->ctx.remaining =
+					(inode->i_size - inode->fragment_size) %
+					cfg.c_mt_segment_size;
+		} else {
+			work->ctx.remaining = cfg.c_mt_segment_size;
+		}
 		work->ctx.seg_num = nsegs;
 		work->ctx.seg_idx = i;
 
