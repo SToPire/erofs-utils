@@ -1400,8 +1400,8 @@ struct erofs_compress_file *z_erofs_mt_do_compress(
 		z_erofs_init_ctx(&work->ctx, inode, blkaddr, tof_chksum, fd);
 		work->ctx.remaining =
 			(i == nsegs - 1) ?
-				(inode->i_size - inode->fragment_size) %
-					cfg.c_mt_segment_size :
+				round_up(inode->i_size - inode->fragment_size,
+					 cfg.c_mt_segment_size) :
 				cfg.c_mt_segment_size;
 		work->ctx.seg_num = nsegs;
 		work->ctx.seg_idx = i;
