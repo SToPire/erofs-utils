@@ -523,7 +523,7 @@ static int vle_compress_one(struct z_erofs_vle_compress_ctx *ctx)
 	bool is_packed_inode = erofs_is_packed_inode(inode);
 	bool final = !ctx->remaining;
 	bool is_last_seg = ctx->seg_idx == ctx->seg_num - 1;
-	int ret = 0;
+	int ret;
 
 	while (len) {
 		bool may_packing = (cfg.c_fragments && final &&
@@ -532,6 +532,8 @@ static int vle_compress_one(struct z_erofs_vle_compress_ctx *ctx)
 				   !may_packing && is_last_seg);
 		bool fix_dedupedfrag = ctx->fix_dedupedfrag;
 		unsigned int compressedsize;
+
+		ret = 0;
 
 		if (z_erofs_compress_dedupe(ctx, &len) && !final)
 			break;
@@ -694,7 +696,6 @@ frag_packing:
 			e->raw = false;
 			may_inline = false;
 			may_packing = false;
-			ret = 0;
 		}
 		e->partial = false;
 		e->blkaddr = ctx->blkaddr;
