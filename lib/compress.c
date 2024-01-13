@@ -1258,7 +1258,7 @@ void z_erofs_mt_work(struct erofs_workqueue *wq, struct erofs_work *work,
 
 	ret = z_erofs_mt_private_init(ctx->inode->sbi, priv, cwork->alg_id,
 				      cwork->alg_name, cwork->comp_level,
-				      thread_idx * (1 << 30));
+				      thread_idx * (1 << 26));
 	if (ret)
 		goto out;
 
