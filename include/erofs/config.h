@@ -73,6 +73,7 @@ struct erofs_configure {
 #ifdef EROFS_MT_ENABLED
 	u64 c_mt_segment_size;
 	u32 c_mt_worker_num;
+	u32 c_mt_epoch_size;
 #endif
 
 	u32 c_pclusterblks_max, c_pclusterblks_def, c_pclusterblks_packed;

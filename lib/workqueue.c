@@ -21,7 +21,6 @@ struct erofs_workqueue_thread_arg {
 	unsigned int thread_index;
 };
 
-#define N_EPOCH (20)
 int epoch_ready = 0;
 atomic_int workerwaiting;
 pthread_mutex_t epoch_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -85,7 +84,7 @@ static void *workqueue_thread(void *arg)
 		(wi->function)(wq, wi, thread_index);
 
 		count++;
-		if (count == N_EPOCH) {
+		if (count == cfg.c_mt_epoch_size) {
 			pthread_mutex_lock(&epoch_mutex);
 			count = 0; 
 			epoch_ready++;

@@ -39,6 +39,7 @@ void erofs_init_configure(void)
 #ifdef EROFS_MT_ENABLED
 	cfg.c_mt_segment_size = 16ULL * 1024 * 1024;
 	cfg.c_mt_worker_num = 1;
+	cfg.c_mt_epoch_size = 20;
 #endif
 }
 

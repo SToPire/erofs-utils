@@ -75,6 +75,7 @@ static struct option long_options[] = {
 #ifdef EROFS_MT_ENABLED
 	{"worker", required_argument, NULL, 519},
 	{"segsize", required_argument, NULL, 520},
+	{"epochsize", required_argument, NULL, 521},
 #endif
 	{0, 0, 0, 0},
 };
@@ -610,6 +611,9 @@ static int mkfs_parse_options_cfg(int argc, char *argv[])
 			break;
 		case 520:
 			cfg.c_mt_segment_size = strtoull(optarg, &endptr, 0) * 1024 * 1024;
+			break;
+		case 521:
+			cfg.c_mt_epoch_size = strtoul(optarg, &endptr, 0);
 			break;
 #endif
 		case 'V':
