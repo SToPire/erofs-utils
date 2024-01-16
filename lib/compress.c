@@ -1450,6 +1450,7 @@ z_erofs_mt_do_compress(struct erofs_inode *inode, int fd, u32 tof_chksum,
 			init_list_head(work->ctx.local_hashmap + j);
 		work->file = cfile;
 		work->work.function = z_erofs_mt_work;
+		work->work.weight = work->ctx.remaining;
 
 		erofs_workqueue_add(&wq, &work->work);
 	}
